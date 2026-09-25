@@ -35,6 +35,7 @@
     原文：1062 - Duplicate entry 'admin-dmi' for key 't_user.username'
 耗时： 0.003s
 ```
+<img width="1282" height="551" alt="image" src="https://github.com/user-attachments/assets/ee3c8557-7c3b-4bb4-a92d-9e5c724c7a9a" />
 
 翻译在 `【错误 编码】` 那一行；下面灰色的是原始英文，方便对照。执行成功、没有报错时会显示 `【执行成功】没有报错`。
 
