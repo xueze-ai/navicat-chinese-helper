@@ -1,0 +1,75 @@
+﻿Navicat 中文助手 · 自检结果
+生成时间：2026-09-25 11:13:46
+词库条目：186
+======================================================================
+
+>>> 执行：INSERT INTO t_user VALUES(NULL, NULL,123156)
+
+>>> 输入: > 1146 - Table 'wh0524.t_user' doesn't exist
+    【错误 1146】表 'wh0524.t_user' 不存在
+        建议：表名拼写错误、表还没建，或者没有选中正确的数据库（先 USE 数据库名）
+        原文：1146 - Table 'wh0524.t_user' doesn't exist
+>>> 输入: > 时间: 0.001s     => 耗时：0.001s
+
+>>> 执行：INSERT INTO t_user VALUES(NULL, 'admin', 123456);
+
+>>> 输入: > 1062 - Duplicate entry 'admin' for key 't_user.username'
+    【错误 1062】值 'admin' 重复，违反唯一约束
+        建议：该字段的值（或联合唯一键的字段组合）已经存在；NULL 值不参与唯一性检查
+        原文：1062 - Duplicate entry 'admin' for key 't_user.username'
+>>> 输入: > 时间: 0.002s     => 耗时：0.002s
+
+>>> 执行：INSERT INTO t_user VALUES(NULL, NULL, 123456);
+
+>>> 输入: > 1048 - Column 'username' cannot be null
+    【错误 1048】列 'username' 不能为 NULL
+        建议：该列定义了 NOT NULL；插入时必须给它值，或者给该列设置 DEFAULT
+        原文：1048 - Column 'username' cannot be null
+>>> 输入: > 时间: 0.001s     => 耗时：0.001s
+
+>>> 执行：INSERT INTO t_user VALUES(NULL, 'admin', '123456');
+
+>>> 输入: > 1366 - Incorrect integer value: 'admin' for column 'username' at row 1
+    【错误 1366】第 1 行列 'username' 的值 'admin' 类型不正确
+        建议：字符串塞进了数值列，或日期格式不对
+        原文：1366 - Incorrect integer value: 'admin' for column 'username' at row 1
+>>> 输入: > 时间: 0.001s     => 耗时：0.001s
+
+>>> 执行：INSERT INTO t_student VALUES(1, 'zhangsan', 99);
+
+>>> 输入: > 1452 - Cannot add or update a child row: a foreign key constraint fails (`wh0524`.`t_student`, CONSTRAINT `fk_1` FOREIGN KEY (`c_id`) REFERENCES `t_course` (`id`))
+    【错误 1452】无法新增或更新子行：外键约束失败
+        建议：子表里的外键值在父表中不存在
+        原文：1452 - Cannot add or update a child row: a foreign key constraint fails (`wh0524`.`t_student`, CONSTRAINT `fk_1` FOREIGN KEY (`c_id`) REFERENCES `t_course` (`id`))
+>>> 输入: > 时间: 0.003s     => 耗时：0.003s
+
+>>> 执行：CREATE TABLE t_emp(id INT PRIMARY KEY);
+
+>>> 输入: > 1050 - Table 't_emp' already exists
+    【错误 1050】表 't_emp' 已经存在
+        建议：换个表名，或先 DROP TABLE
+        原文：1050 - Table 't_emp' already exists
+>>> 输入: > 时间: 0.001s     => 耗时：0.001s
+
+>>> 执行：SELECT * FROM t_user WHERE id = 1
+
+>>> 输入: > 1054 - Unknown column 'ids' in 'where clause'
+    【错误 1054】在 where clause 中找不到列 'ids'
+        建议：列名拼写错误、别名不存在，或该列不在 FROM/JOIN 的表里
+        原文：1054 - Unknown column 'ids' in 'where clause'
+>>> 输入: > 时间: 0.001s     => 耗时：0.001s
+
+>>> 执行：SELECT * FROM t_user
+>>> 输入: > 受影响的行: 3     => 受影响的行：3
+>>> 输入: > 时间: 0.002s     => 耗时：0.002s
+
+>>> 执行：CREATE TABLE t_x(id INT AUTO_INCREMENT, name VARCHAR(10));
+
+>>> 输入: > 1075 - Incorrect table definition; there can be only one auto column and it must be defined as a key
+    【错误 1075】表定义错误：只能有一个自增列，且该列必须定义为键
+        建议：给自增列加 PRIMARY KEY 或 UNIQUE KEY
+        原文：1075 - Incorrect table definition; there can be only one auto column and it must be defined as a key
+>>> 输入: > 时间: 0.001s     => 耗时：0.001s
+
+======================================================================
+错误行共 8 条，其中词库命中 8 条。
