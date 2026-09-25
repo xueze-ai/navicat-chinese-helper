@@ -16,7 +16,7 @@ Start-Sleep -Milliseconds 800
 Write-Host "正在编译 ..."
 & (Join-Path $fw "csc.exe") /nologo /target:winexe /platform:x64 /codepage:65001 `
     /out:"$exe" `
-    /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:System.dll `
+    /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:System.dll /r:System.Web.Extensions.dll `
     (Join-Path $dir "NavicatChineseHelper.cs")
 
 if ($LASTEXITCODE -ne 0) {
