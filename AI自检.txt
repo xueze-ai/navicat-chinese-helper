@@ -1,0 +1,38 @@
+﻿Navicat 中文助手 · AI 自检结果
+生成时间：2026-09-25 17:42:01
+接口地址：https://llm-q01cs4d9jbp291hq.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+模型：qwen-flash
+AI 开关：开，密钥：已填写
+单价：输入 0.15 元/百万 tokens，输出 1.5 元/百万 tokens
+======================================================================
+
+>>> 样例 1：SQL = ALTER TABLE `emp` ADD CONSTRAINT `emp_ibfk_1` FOREIGN KEY (`NAME`) REFERENCES `dept` (`dname`) ON UPDATE CASCADE ON DELETE SET NULL
+    英文原文 = Failed to add the foreign key constraint. Missing index for constraint 'emp_ibfk_1' in the referenced table 'dept'
+    模型 = qwen-flash，token：输入 626 / 输出 225
+    严重程度 = 需处理
+    原因 = 外键约束要求被引用的列（dept.dname）必须有索引，但当前 dept 表中的 dname 列没有索引。
+    检查1 = 执行 `SHOW INDEX FROM `dept` WHERE Column_name = 'dname';` 查看 dname 是否有索引
+    检查2 = 在 Navicat 中打开 dept 表结构，检查 dname 列是否已创建索引
+    检查3 = 确认 dname 列是否允许重复值，若不允许则需建唯一索引
+    解决1 = 执行 `ALTER TABLE `dept` ADD INDEX `idx_dname` (`dname`);` 为 dept 表的 dname 列添加普通索引
+    解决2 = 若 dname 应唯一，可改为 `ALTER TABLE `dept` ADD UNIQUE INDEX `uniq_dname` (`dname`);`
+    解决3 = 添加索引后再次执行原 ALTER TABLE 语句
+    避坑 = 外键引用的列必须有索引，建议使用唯一索引以保证数据完整性，避免后续问题
+    JSON 解析 = 成功
+
+>>> 样例 2：SQL = INSERT INTO `t_user` VALUES (NULL, 'admin', 123)
+    英文原文 = Duplicate entry 'admin' for key 't_user.username'
+    模型 = qwen-flash，token：输入 579 / 输出 157
+    严重程度 = 一般
+    原因 = 表 t_user 中的 username 字段有唯一约束，而 'admin' 这个值已存在，导致插入重复数据
+    检查1 = SHOW INDEX FROM `t_user` WHERE Column_name = 'username';
+    检查2 = 查看 t_user 表中是否存在 username 为 'admin' 的记录：SELECT * FROM `t_user` WHERE `username` = 'admin';
+    解决1 = 删除已有重复记录后重试：DELETE FROM `t_user` WHERE `username` = 'admin';
+    解决2 = 修改插入值为其他不重复的用户名，例如：INSERT INTO `t_user` VALUES (NULL, 'admin1', 123);
+    避坑 = 插入前先检查唯一字段是否已存在，避免重复值
+    JSON 解析 = 成功
+
+======================================================================
+成功 2/2 条。
+合计 token：输入 1205，输出 382，合计 1587
+估算花费：0.000754 元

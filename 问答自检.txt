@@ -1,0 +1,33 @@
+﻿Navicat 中文助手 · AI 问答自检
+时间：2026-09-27 10:13:47
+启用：True   地址：https://llm-q01cs4d9jbp291hq.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+模型：qwen-flash   密钥长度：117
+
+
+问：MySQL 里 deterministic 和 not deterministic 分别是什么意思？建函数时为什么要指定？不指定会怎样？顺便给我一条查看当前数据库所有函数的 SQL，要能直接执行。
+是否成功：True
+用量：输入 315 tokens，输出 211 tokens，约 0.000822 元
+回答字符数：508
+---- 回答全文 ----
+在 MySQL 中，DETERMINISTIC 表示函数的返回值仅依赖于输入参数，相同输入总是返回相同结果；NOT DETERMINISTIC 则表示可能因外部因素（如时间、随机数）导致输出不同。
+
+1. 为什么要指定：MySQL 在优化查询时会利用 DETERMINISTIC 函数进行缓存和预计算，提升性能。若函数实际是非确定性的却标记为 DETERMINISTIC，可能导致结果错误。
+2. 怎么用：例如创建一个加法函数应设为 DETERMINISTIC，而使用 NOW() 或 RAND() 的函数必须设为 NOT DETERMINISTIC。
+3. 不指定会怎样：MySQL 默认将函数视为 NOT DETERMINISTIC，这可能影响性能优化，但不会报错。
+
+查看当前数据库所有函数的 SQL：
+
+```sql
+SELECT `routine_name`, `routine_type`, `data_type`, `specific_name`
+FROM `information_schema`.`routines`
+WHERE `routine_schema` = DATABASE();
+```
+---- 复制SQL 会拿到的内容（1 段）----
+SELECT `routine_name`, `routine_type`, `data_type`, `specific_name`
+FROM `information_schema`.`routines`
+WHERE `routine_schema` = DATABASE();
+---- 分段检查 ----
+段1 [文字] 在 MySQL 中，DETERMINISTIC 表示函数的返回值仅依赖于输入参数，相同输入总是返回相同结果；NOT DE ...
+段2 [SQL] SELECT `routine_name`, `routine_type`, `data_type`, `specifi ...
+---- 结论 ----
+通过：能给出可复制的 SQL（141 字符，末尾分号=True）

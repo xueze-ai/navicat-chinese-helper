@@ -1,0 +1,10 @@
+﻿# Navicat 中文助手 · AI 设置
+# 这个文件里有 API 密钥，只放在本机用，请不要上传到 GitHub 等公开仓库。
+# 地址填 OpenAI 兼容地址，到 /v1 为止，例如 https://xxx/compatible-mode/v1
+# 单价单位：元 / 百万 tokens；填 0 表示只统计 token、不算钱。
+启用=1
+地址=
+密钥=
+模型=
+输出单价=
+最大输出=

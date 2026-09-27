@@ -13,10 +13,17 @@ $exe = Join-Path $dir "Navicat中文助手.exe"
 Get-Process | Where-Object { try { $_.Path -eq $exe } catch { $false } } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
 
+$ico = Join-Path $dir "logo.ico"
+$logo = Join-Path $dir "logo.png"
+$extra = @()
+if (Test-Path $ico) { $extra += "/win32icon:$ico" }
+if (Test-Path $logo) { $extra += "/resource:$logo,LogoPng" }
+
 Write-Host "正在编译 ..."
 & (Join-Path $fw "csc.exe") /nologo /target:winexe /platform:x64 /codepage:65001 `
     /out:"$exe" `
     /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:System.dll /r:System.Web.Extensions.dll `
+    $extra `
     (Join-Path $dir "NavicatChineseHelper.cs")
 
 if ($LASTEXITCODE -ne 0) {

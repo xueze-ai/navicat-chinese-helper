@@ -439,6 +439,17 @@ namespace NavicatZhHelper
             "6. 全部用简体中文，不要 emoji，不要用 markdown 语法；SQL 里的库名、表名、字段名用反引号包住。\n" +
             "7. 不确定的地方不要编造，说明需要用户确认即可。\n" +
             "8. 只讲与本次报错直接相关的判断，不要把可选条件说成必须（例如不要声称外键列必须唯一），拿不准就写「需要确认」。";
+        public const string ChatPrompt =
+            "你是 MySQL / Navicat 助教，读者是数据库新手。全部用简体中文回答，不要 emoji，不要用 markdown 的 # 和 * 层级符号。\n" +
+            "回答要求：\n" +
+            "1. 先用 1~2 句给结论，再分点展开；分点写成「1. 2. 3.」的形式。\n" +
+            "2. 需要给 SQL 时，把完整、可以直接执行的语句单独放在 ```sql 和 ``` 两行之间；库名、表名、字段名用反引号。\n" +
+            "3. 能从上文推断出真实表名/字段名就用真实的，不要写 xxx 这类占位符；确实不清楚就说明「这里换成你的表名」。\n" +
+            "4. 用户问概念时，讲清四件事：是什么、为什么要用、怎么用（给例子）、不用会怎样。\n" +
+            "5. 不要编造 MySQL 的行为、参数或版本差异；没把握就说「需要确认」。\n" +
+            "6. 回答尽量控制在 400 字以内，除非用户明确要求展开讲。\n" +
+            "7. 如果用户贴的是一段报错或 SQL，先判断问题出在哪，再给检查步骤和可执行的修改语句。";
+
 
         public static AiCallResult Ask(AiConfig cfg, string sql, string english, int code, string zh)
         {
@@ -472,7 +483,29 @@ namespace NavicatZhHelper
             return sb.ToString();
         }
 
+        public static Dictionary<string, object> Msg(string role, string content)
+        {
+            Dictionary<string, object> m = new Dictionary<string, object>();
+            m["role"] = role;
+            m["content"] = content;
+            return m;
+        }
+
+        // AI 问答：多轮对话，直接返回纯文本回答（放在 Result.Why 里）
+        public static AiCallResult Chat(AiConfig cfg, List<object> msgs)
+        {
+            return SendMsgs(cfg, msgs, false, 1500);
+        }
+
         private static AiCallResult Send(AiConfig cfg, string sys, string user, bool parseJson)
+        {
+            List<object> msgs = new List<object>();
+            msgs.Add(Msg("system", sys));
+            msgs.Add(Msg("user", user));
+            return SendMsgs(cfg, msgs, parseJson, 0);
+        }
+
+        private static AiCallResult SendMsgs(AiConfig cfg, List<object> msgs, bool parseJson, int minTokens)
         {
             AiCallResult r = new AiCallResult();
             r.Model = cfg.Model;
@@ -492,16 +525,9 @@ namespace NavicatZhHelper
                 Dictionary<string, object> body = new Dictionary<string, object>();
                 body["model"] = cfg.Model;
                 body["temperature"] = 0.2;
-                body["max_tokens"] = cfg.MaxTokens > 0 ? cfg.MaxTokens : 1200;
-                List<object> msgs = new List<object>();
-                Dictionary<string, object> m1 = new Dictionary<string, object>();
-                m1["role"] = "system";
-                m1["content"] = sys;
-                msgs.Add(m1);
-                Dictionary<string, object> m2 = new Dictionary<string, object>();
-                m2["role"] = "user";
-                m2["content"] = user;
-                msgs.Add(m2);
+                int mt = cfg.MaxTokens > 0 ? cfg.MaxTokens : 1200;
+                if (minTokens > mt) mt = minTokens;
+                body["max_tokens"] = mt;
                 body["messages"] = msgs;
 
                 byte[] data = Encoding.UTF8.GetBytes(ser.Serialize(body));
@@ -510,7 +536,7 @@ namespace NavicatZhHelper
                 req.Method = "POST";
                 req.ContentType = "application/json";
                 req.Accept = "application/json";
-                req.UserAgent = "NavicatZhHelper/1.2";
+                req.UserAgent = "NavicatZhHelper/2.0.1";
                 req.Headers["Authorization"] = "Bearer " + cfg.ApiKey.Trim();
                 req.Timeout = 60000;
                 req.ReadWriteTimeout = 60000;
@@ -880,6 +906,52 @@ namespace NavicatZhHelper
 
     // ---------------- 主窗口 ----------------
 
+    internal static class AppIcons
+    {
+        private static Icon _app;
+        private static bool _tried;
+
+        // 程序图标：内嵌的 logo.png 转成 Icon，失败就退回系统默认图标
+        public static Icon App()
+        {
+            if (_app != null) return _app;
+            if (!_tried)
+            {
+                _tried = true;
+                try
+                {
+                    using (Stream s = typeof(AppIcons).Assembly.GetManifestResourceStream("LogoPng"))
+                    {
+                        if (s != null)
+                        {
+                            using (Bitmap b = new Bitmap(s))
+                            {
+                                IntPtr h = b.GetHicon();
+                                using (Icon tmp = Icon.FromHandle(h)) _app = (Icon)tmp.Clone();
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+            if (_app == null) { try { _app = SystemIcons.Application; } catch { } }
+            return _app;
+        }
+
+        // 窗口里显示用的小 logo（256x256 原图，交给 PictureBox 缩放）
+        public static Bitmap Logo()
+        {
+            try
+            {
+                using (Stream s = typeof(AppIcons).Assembly.GetManifestResourceStream("LogoPng"))
+                {
+                    if (s != null) return new Bitmap(s);
+                }
+            }
+            catch { }
+            return null;
+        }
+    }
     internal class MainForm : Form
     {
         private readonly ErrorDict _dict = new ErrorDict();
@@ -968,66 +1040,89 @@ namespace NavicatZhHelper
 
         private void BuildUi()
         {
-            Text = "Navicat 中文助手";
+            Text = "Navicat 中文助手 v2.0.1";
             Width = 760;
             Height = 520;
             StartPosition = FormStartPosition.Manual;
             Font = new Font("微软雅黑", 9F);
-            MinimumSize = new Size(700, 340);
+            try { Icon = AppIcons.App(); } catch { }
+            MinimumSize = new Size(740, 340);
 
             Panel top = new Panel();
             top.Dock = DockStyle.Top;
             top.Height = 38;
             top.Padding = new Padding(6, 6, 6, 0);
+            try
+            {
+                Bitmap lg = AppIcons.Logo();
+                if (lg != null)
+                {
+                    PictureBox lb = new PictureBox();
+                    lb.Image = lg;
+                    lb.SizeMode = PictureBoxSizeMode.Zoom;
+                    lb.Left = 6;
+                    lb.Top = 8;
+                    lb.Width = 22;
+                    lb.Height = 22;
+                    top.Controls.Add(lb);
+                }
+            }
+            catch { }
 
             _pauseBtn = new Button();
             _pauseBtn.Text = "暂停";
             _pauseBtn.Width = 64;
-            _pauseBtn.Left = 6;
+            _pauseBtn.Left = 34;
             _pauseBtn.Top = 5;
             _pauseBtn.Click += new EventHandler(OnPauseClick);
 
             Button clearBtn = new Button();
             clearBtn.Text = "清空";
             clearBtn.Width = 56;
-            clearBtn.Left = 76;
+            clearBtn.Left = 104;
             clearBtn.Top = 5;
             clearBtn.Click += delegate(object s, EventArgs e) { _log.Clear(); _logVersion++; };
 
             Button copyBtn = new Button();
             copyBtn.Text = "复制全部";
             copyBtn.Width = 76;
-            copyBtn.Left = 138;
+            copyBtn.Left = 166;
             copyBtn.Top = 5;
             copyBtn.Click += new EventHandler(OnCopyClick);
 
             Button dictBtn = new Button();
             dictBtn.Text = "词库";
             dictBtn.Width = 56;
-            dictBtn.Left = 220;
+            dictBtn.Left = 248;
             dictBtn.Top = 5;
             dictBtn.Click += new EventHandler(OnOpenDictClick);
 
             Button reloadBtn = new Button();
             reloadBtn.Text = "载入词库";
             reloadBtn.Width = 76;
-            reloadBtn.Left = 282;
+            reloadBtn.Left = 310;
             reloadBtn.Top = 5;
             reloadBtn.Click += delegate(object s, EventArgs e) { LoadDict(); };
 
             Button aiCfgBtn = new Button();
             aiCfgBtn.Text = "AI设置";
             aiCfgBtn.Width = 76;
-            aiCfgBtn.Left = 364;
+            aiCfgBtn.Left = 392;
             aiCfgBtn.Top = 5;
             aiCfgBtn.Click += new EventHandler(OnAiSettingsClick);
+            Button chatBtn = new Button();
+            chatBtn.Text = "AI问答";
+            chatBtn.Width = 76;
+            chatBtn.Left = 474;
+            chatBtn.Top = 5;
+            chatBtn.Click += new EventHandler(OnChatClick);
 
             _topChk = new CheckBox();
             _topChk.Text = "置顶";
             _topChk.Checked = true;
-            _topChk.Left = 448;
+            _topChk.Left = 558;
             _topChk.Top = 8;
-            _topChk.Width = 58;
+            _topChk.Width = 60;
             _topChk.CheckedChanged += delegate(object s, EventArgs e) { TopMost = _topChk.Checked; };
 
             Button usageBtn = new Button();
@@ -1042,6 +1137,7 @@ namespace NavicatZhHelper
             top.Controls.Add(dictBtn);
             top.Controls.Add(reloadBtn);
             top.Controls.Add(aiCfgBtn);
+            top.Controls.Add(chatBtn);
             top.Controls.Add(_topChk);
             top.Controls.Add(usageBtn);
 
@@ -1086,7 +1182,7 @@ namespace NavicatZhHelper
             TopMost = true;
 
             _tray = new NotifyIcon();
-            _tray.Icon = SystemIcons.Application;
+            _tray.Icon = AppIcons.App();
             _tray.Text = "Navicat 中文助手";
             _tray.Visible = true;
             ContextMenu trayMenu = new ContextMenu();
@@ -1160,6 +1256,26 @@ namespace NavicatZhHelper
             try { Process.Start("notepad.exe", "\"" + _dictPath + "\""); } catch { }
         }
 
+        private ChatForm _chat;
+
+        private void OnChatClick(object sender, EventArgs e)
+        {
+            if (_chat != null && !_chat.IsDisposed)
+            {
+                if (!_chat.Visible) _chat.Show();
+                if (_chat.WindowState == FormWindowState.Minimized) _chat.WindowState = FormWindowState.Normal;
+                _chat.Activate();
+                return;
+            }
+            _chat = new ChatForm(delegate() { return _aiConfig; }, _usageSession, _usageAll, _dir, UpdateStatus);
+            _chat.FormClosed += delegate(object s2, FormClosedEventArgs e2) { _chat = null; UpdateStatus(); };
+            _chat.TopMost = true;
+            _chat.Show();
+            _chat.WindowState = FormWindowState.Normal;
+            _chat.BringToFront();
+            _chat.Activate();
+            _chat.FocusInput();
+        }
         private void OnAiSettingsClick(object sender, EventArgs e)
         {
             AiSettingsForm f = new AiSettingsForm(_aiConfig);
@@ -1714,6 +1830,650 @@ namespace NavicatZhHelper
 
     // ---------------- AI 设置窗口 ----------------
 
+    // AI 问答窗口：可以连续追问，回答里的 ```sql 段会被单独标出来，支持一键复制到 Navicat 运行
+    internal class ChatForm : Form
+    {
+        private readonly Func<AiConfig> _cfgGet;
+        private readonly AiUsage _session;
+        private readonly AiUsage _all;
+        private readonly string _dir;
+        private readonly Action _onUsage;
+
+        private RichTextBox _view;
+        private TextBox _input;
+        private Button _sendBtn;
+        private Label _status;
+        private Label _modelLabel;
+        private bool _busy;
+        private int _seq;
+
+        private readonly List<object> _history = new List<object>();
+        private readonly List<string> _lastSql = new List<string>();
+        private string _lastAnswer = "";
+
+        private Font _fNorm;
+        private Font _fBold;
+        private Font _fMono;
+
+        private static readonly Color UserColor = Color.FromArgb(0, 90, 175);
+        private static readonly Color AiColor = Color.FromArgb(30, 30, 30);
+        private static readonly Color SqlColor = Color.FromArgb(0, 105, 80);
+        private static readonly Color SqlBack = Color.FromArgb(243, 248, 245);
+        private static readonly Color NoteColor = Color.FromArgb(140, 140, 140);
+        private static readonly Color ErrColor = Color.FromArgb(196, 30, 30);
+
+        public ChatForm(Func<AiConfig> cfgGet, AiUsage session, AiUsage all, string dir, Action onUsage)
+        {
+            _cfgGet = cfgGet;
+            _session = session;
+            _all = all;
+            _dir = dir;
+            _onUsage = onUsage;
+
+            Text = "AI 问答 · Navicat 中文助手 v2.0.1";
+            Width = 820;
+            Height = 640;
+            MinimumSize = new Size(660, 480);
+            StartPosition = FormStartPosition.CenterScreen;
+            Font = new Font("微软雅黑", 9F);
+            try { Icon = AppIcons.App(); }
+            catch { }
+
+            _fNorm = new Font("微软雅黑", 9.5F);
+            _fBold = new Font("微软雅黑", 9.5F, FontStyle.Bold);
+            _fMono = new Font("Consolas", 9.5F);
+
+            // ---- 顶部：logo + 标题 + 当前模型 ----
+            Panel head = new Panel();
+            head.Dock = DockStyle.Top;
+            head.Height = 54;
+            head.BackColor = Color.FromArgb(250, 248, 242);
+
+            try
+            {
+                Bitmap lg = AppIcons.Logo();
+                if (lg != null)
+                {
+                    PictureBox pb = new PictureBox();
+                    pb.Image = lg;
+                    pb.SizeMode = PictureBoxSizeMode.Zoom;
+                    pb.Left = 12;
+                    pb.Top = 11;
+                    pb.Width = 32;
+                    pb.Height = 32;
+                    head.Controls.Add(pb);
+                }
+            }
+            catch { }
+
+            Label t1 = new Label();
+            t1.Text = "AI 问答";
+            t1.Font = new Font("微软雅黑", 11F, FontStyle.Bold);
+            t1.Left = 54;
+            t1.Top = 8;
+            t1.AutoSize = true;
+            head.Controls.Add(t1);
+
+            Label t2 = new Label();
+            t2.Text = "数据库、SQL、报错都能问；回答里的 SQL 会自动标出来，点「复制SQL」就能粘到 Navicat 里运行。";
+            t2.ForeColor = Color.FromArgb(110, 110, 110);
+            t2.Font = new Font("微软雅黑", 8.5F);
+            t2.Left = 56;
+            t2.Top = 31;
+            t2.AutoSize = true;
+            head.Controls.Add(t2);
+
+            _modelLabel = new Label();
+            _modelLabel.AutoSize = false;
+            _modelLabel.TextAlign = ContentAlignment.MiddleRight;
+            _modelLabel.ForeColor = Color.FromArgb(120, 120, 120);
+            _modelLabel.Font = new Font("微软雅黑", 8.5F);
+            _modelLabel.Dock = DockStyle.Right;
+            _modelLabel.Width = 200;
+            head.Controls.Add(_modelLabel);
+
+            // ---- 对话区 ----
+            _view = new RichTextBox();
+            _view.Dock = DockStyle.Fill;
+            _view.ReadOnly = true;
+            _view.BackColor = Color.White;
+            _view.BorderStyle = BorderStyle.None;
+            _view.WordWrap = true;
+            _view.HideSelection = false;
+            _view.Font = _fNorm;
+            _view.DetectUrls = false;
+
+            // ---- 输入区 ----
+            Panel inputPanel = new Panel();
+            inputPanel.Dock = DockStyle.Bottom;
+            inputPanel.Height = 104;
+            inputPanel.BackColor = Color.FromArgb(249, 249, 249);
+
+            _input = new TextBox();
+            _input.Multiline = true;
+            _input.ScrollBars = ScrollBars.Vertical;
+            _input.Left = 12;
+            _input.Top = 8;
+            _input.Width = 780;
+            _input.Height = 56;
+            _input.Font = _fNorm;
+            _input.KeyDown += new KeyEventHandler(OnInputKeyDown);
+            inputPanel.Controls.Add(_input);
+            inputPanel.Resize += delegate(object s, EventArgs e)
+            {
+                _input.Width = inputPanel.ClientSize.Width - 96;
+            };
+
+            _sendBtn = new Button();
+            _sendBtn.Text = "发送";
+            _sendBtn.Left = 12;
+            _sendBtn.Top = 70;
+            _sendBtn.Width = 92;
+            _sendBtn.Height = 26;
+            _sendBtn.Click += new EventHandler(OnSendClick);
+            inputPanel.Controls.Add(_sendBtn);
+
+            Button copySql = new Button();
+            copySql.Text = "复制SQL";
+            copySql.Left = 112;
+            copySql.Top = 70;
+            copySql.Width = 100;
+            copySql.Height = 26;
+            copySql.Click += new EventHandler(OnCopySqlClick);
+            inputPanel.Controls.Add(copySql);
+
+            Button copyAns = new Button();
+            copyAns.Text = "复制回答";
+            copyAns.Left = 220;
+            copyAns.Top = 70;
+            copyAns.Width = 100;
+            copyAns.Height = 26;
+            copyAns.Click += new EventHandler(OnCopyAnswerClick);
+            inputPanel.Controls.Add(copyAns);
+
+            Button clearChat = new Button();
+            clearChat.Text = "清空对话";
+            clearChat.Left = 328;
+            clearChat.Top = 70;
+            clearChat.Width = 100;
+            clearChat.Height = 26;
+            clearChat.Click += new EventHandler(OnClearClick);
+            inputPanel.Controls.Add(clearChat);
+
+            Button closeBtn = new Button();
+            closeBtn.Text = "关闭";
+            closeBtn.Dock = DockStyle.None;
+            closeBtn.Width = 88;
+            closeBtn.Click += delegate(object s, EventArgs e) { Close(); };
+            inputPanel.Controls.Add(closeBtn);
+            closeBtn.Top = 70;
+            closeBtn.Height = 26;
+            closeBtn.Left = Math.Max(440, inputPanel.ClientSize.Width - 100);
+            closeBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            inputPanel.Resize += delegate(object s, EventArgs e)
+            {
+                closeBtn.Left = inputPanel.ClientSize.Width - closeBtn.Width - 12;
+            };
+
+            // ---- 常用问法 ----
+            Panel quick = new Panel();
+            quick.Dock = DockStyle.Bottom;
+            quick.Height = 36;
+
+            Label ql = new Label();
+            ql.Text = "常用问法：";
+            ql.Left = 12;
+            ql.Top = 9;
+            ql.AutoSize = true;
+            ql.ForeColor = Color.FromArgb(110, 110, 110);
+            quick.Controls.Add(ql);
+
+            string[] chipText = new string[]
+            {
+                "有哪些函数？",
+                "deterministic 是啥？",
+                "怎么查表结构？",
+                "索引怎么建？"
+            };
+            string[] chipFill = new string[]
+            {
+                "当前数据库里有哪些函数？给我一条可以直接执行的 SQL，并说明结果里每一列怎么看。",
+                "MySQL 里 deterministic 和 not deterministic 分别是什么意思？建函数时为什么要指定？不指定会怎样？请给例子。",
+                "给我一条查看表结构的 SQL（字段、类型、默认值、注释、索引都要），要能直接在 Navicat 里执行。",
+                "一张表查询慢，怎么用 SQL 看它有哪些索引、查询有没有走索引？给我可以直接执行的语句和判断方法。"
+            };
+            int cx = 78;
+            for (int i = 0; i < chipText.Length; i++)
+            {
+                Button c = new Button();
+                c.Text = chipText[i];
+                c.Left = cx;
+                c.Top = 6;
+                c.Width = 138;
+                c.Height = 25;
+                c.Tag = chipFill[i];
+                c.Click += new EventHandler(OnChipClick);
+                quick.Controls.Add(c);
+                cx += 144;
+            }
+
+            // ---- 状态行 ----
+            _status = new Label();
+            _status.Dock = DockStyle.Bottom;
+            _status.Height = 24;
+            _status.TextAlign = ContentAlignment.MiddleLeft;
+            _status.Padding = new Padding(8, 0, 0, 0);
+            _status.ForeColor = Color.FromArgb(90, 90, 90);
+            _status.BorderStyle = BorderStyle.FixedSingle;
+            _status.Text = "在下面输入问题，按「发送」或 Ctrl+Enter。";
+
+            Controls.Add(_view);
+            Controls.Add(_status);
+            Controls.Add(inputPanel);
+            Controls.Add(quick);
+            Controls.Add(head);
+
+            Shown += delegate(object s, EventArgs e) { _input.Focus(); };
+            UpdateModelLabel();
+        }
+
+        public void FocusInput()
+        {
+            try
+            {
+                if (_input != null)
+                {
+                    _input.Focus();
+                    _input.SelectionStart = _input.TextLength;
+                }
+            }
+            catch { }
+        }
+        private void UpdateModelLabel()
+        {
+            try
+            {
+                AiConfig c = _cfgGet();
+                if (c == null || !c.Enabled) { _modelLabel.Text = "AI 未启用"; return; }
+                if (c.ApiKey.Trim().Length == 0) { _modelLabel.Text = "AI 待配置"; return; }
+                _modelLabel.Text = "模型：" + c.Model;
+            }
+            catch { }
+        }
+
+        private void OnInputKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                OnSendClick(sender, EventArgs.Empty);
+            }
+        }
+
+        private void OnChipClick(object sender, EventArgs e)
+        {
+            Button b = sender as Button;
+            if (b == null || b.Tag == null) return;
+            _input.Text = Convert.ToString(b.Tag);
+            _input.SelectionStart = _input.TextLength;
+            _input.Focus();
+            _status.Text = "已经填好问题，按「发送」或 Ctrl+Enter 提问。";
+        }
+
+        private void OnSendClick(object sender, EventArgs e)
+        {
+            if (_busy) { _status.Text = "上一条还在等回答，稍等一下。"; return; }
+            string q = _input.Text.Trim();
+            if (q.Length == 0) { _status.Text = "先写点问题再发送。"; return; }
+
+            AiConfig cfg = _cfgGet();
+            if (cfg == null || !cfg.Enabled)
+            {
+                AppendNote("AI 没有启用：回到主窗口点「AI设置」，勾上「启用 AI 分析」并填好地址和密钥。");
+                return;
+            }
+            if (cfg.BaseUrl.Trim().Length == 0 || cfg.ApiKey.Trim().Length == 0)
+            {
+                AppendNote("还没有填 API 地址或密钥：回到主窗口点「AI设置」填写后，点「测试连接」确认能通。");
+                return;
+            }
+
+            AiConfig snap = cfg.Clone();
+            _input.Clear();
+            Append("我：", UserColor, true);
+            Append(OneLine(q) + "\r\n", AiColor, false);
+
+            _history.Add(AiClient.Msg("user", q));
+            TrimHistory();
+
+            List<object> msgs = new List<object>();
+            msgs.Add(AiClient.Msg("system", AiClient.ChatPrompt));
+            for (int i = 0; i < _history.Count; i++) msgs.Add(_history[i]);
+
+            _busy = true;
+            _sendBtn.Enabled = false;
+            _sendBtn.Text = "思考中";
+            _status.Text = "正在请 " + snap.Model + " 回答 ...（Ctrl+Enter 也一样发送）";
+            int mySeq = ++_seq;
+
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state)
+            {
+                AiCallResult r = AiClient.Chat(snap, msgs);
+                try { BeginInvoke(new Action(delegate() { OnAnswer(mySeq, r, snap); })); }
+                catch { }
+            });
+        }
+
+        private void OnAnswer(int mySeq, AiCallResult r, AiConfig cfg)
+        {
+            if (mySeq != _seq) return;
+            _busy = false;
+            _sendBtn.Enabled = true;
+            _sendBtn.Text = "发送";
+
+            if (r != null) { _session.Add(r); _all.Add(r); }
+            try { _all.Save(AiUsage.FilePath(_dir)); }
+            catch { }
+            if (_onUsage != null) { try { _onUsage(); } catch { } }
+
+            if (r == null || !r.Ok)
+            {
+                Append("AI：", ErrColor, true);
+                Append("接口没答上来。\r\n", ErrColor, false);
+                AppendNote(r == null ? "没有拿到返回。" : r.Error);
+                AppendNote("排查：主窗口「AI设置」里点「测试连接」，它会直接告诉你是地址、密钥还是模型名不对。");
+                _status.Text = "上一次请求失败（多半没花钱或只花了极少）。";
+                return;
+            }
+
+            string ans = r.Result.Why == null ? "" : r.Result.Why.Trim();
+            _lastAnswer = ans;
+            _lastSql.Clear();
+
+            Append("AI：", AiColor, true);
+            AppendLineBreak();
+            try
+            {
+                List<KeyValuePair<bool, string>> segs = SplitFences(ans);
+                int n = 0;
+                for (int i = 0; i < segs.Count; i++)
+                {
+                    string body = segs[i].Value;
+                    if (body.Trim().Length == 0) continue;
+                    if (segs[i].Key)
+                    {
+                        n++;
+                        _lastSql.Add(body.Trim());
+                        Append("    SQL " + n + "：", NoteColor, false);
+                        AppendLineBreak();
+                        AppendBlock(Indent(body.Trim(), "    "), SqlColor, SqlBack);
+                        AppendLineBreak();
+                    }
+                    else
+                    {
+                        Append(body.Trim() + "\r\n", AiColor, false);
+                    }
+                }
+                if (n == 0 && ans.Length == 0) Append("（这次没有内容）\r\n", AiColor, false);
+                if (n > 0) AppendNote("这条回答里有 " + n + " 段 SQL，点「复制SQL」就能直接粘到 Navicat 里运行。");
+            }
+            catch (Exception ex)
+            {
+                Append(ans + "\r\n", AiColor, false);
+                Diag.LogError("chat render", ex);
+            }
+
+            _history.Add(AiClient.Msg("assistant", ans));
+            TrimHistory();
+
+            int total = r.PromptTokens + r.CompletionTokens;
+            _status.Text = "本次 " + total + " tokens（输入 " + r.PromptTokens + " / 输出 " + r.CompletionTokens + "）"
+                + "，约 " + Money(cfg, r) + " 元；本次会话合计 " + (_session.PromptTokens + _session.CompletionTokens)
+                + " tokens / " + Money(_session, cfg) + " 元。";
+            UpdateModelLabel();
+        }
+
+        // 只保留最近 8 条消息，避免上下文越滚越长
+        // 演示：按真实渲染路径画一段固定问答，方便截图和自检，不调用接口也不花额度
+        public void RenderDemo()
+        {
+            string q = "MySQL 里 deterministic 和 not deterministic 分别是什么意思？建函数时为什么要指定？不指定会怎样？顺便给我一条查看当前数据库所有函数的 SQL。";
+            Append("我：", UserColor, true);
+            Append(OneLine(q) + "\r\n", AiColor, false);
+            string ans =
+                "在 MySQL 中，DETERMINISTIC 表示函数的返回值只由输入参数决定，同样的输入永远得到同样的结果；NOT DETERMINISTIC 表示结果可能受时间、随机数等外部因素影响。\r\n" +
+                "1. 为什么要指定：MySQL 据此判断能不能缓存和预计算；如果函数实际不确定却标成 DETERMINISTIC，可能算错结果。\r\n" +
+                "2. 不指定会怎样：默认按 NOT DETERMINISTIC 处理，不报错，但可能少掉一部分优化。\r\n" +
+                "查看当前数据库里所有函数的 SQL：\r\n" +
+                "```sql\r\n" +
+                "SELECT `routine_name`, `routine_type`, `data_type`, `specific_name`\r\n" +
+                "FROM `information_schema`.`routines`\r\n" +
+                "WHERE `routine_schema` = DATABASE();\r\n" +
+                "```\r\n";
+            _lastAnswer = ans;
+            _lastSql.Clear();
+            Append("AI：", AiColor, true);
+            AppendLineBreak();
+            List<KeyValuePair<bool, string>> segs = SplitFences(ans);
+            int n = 0;
+            for (int i = 0; i < segs.Count; i++)
+            {
+                string body = segs[i].Value;
+                if (body.Trim().Length == 0) continue;
+                if (segs[i].Key)
+                {
+                    n++;
+                    _lastSql.Add(body.Trim());
+                    Append("    SQL " + n + "：", NoteColor, false);
+                    AppendLineBreak();
+                    AppendBlock(Indent(body.Trim(), "    "), SqlColor, SqlBack);
+                    AppendLineBreak();
+                }
+                else Append(body.Trim() + "\r\n", AiColor, false);
+            }
+            if (n > 0) AppendNote("这条回答里有 " + n + " 段 SQL，点「复制SQL」就能直接粘到 Navicat 里运行。");
+            AppendNote("（这是 --chatdemo 的演示内容，不消耗接口额度；真实提问请写在下面的输入框里。）");
+            _input.Text = q;
+            _status.Text = "演示模式：界面与真实回答一致，内容为示例";
+            UpdateModelLabel();
+        }
+        private void TrimHistory()
+        {
+            while (_history.Count > 8) _history.RemoveAt(0);
+            while (_history.Count > 0)
+            {
+                Dictionary<string, object> m0 = _history[0] as Dictionary<string, object>;
+                if (m0 != null && Convert.ToString(m0["role"]) == "assistant") _history.RemoveAt(0);
+                else break;
+            }
+        }
+
+        private void OnCopySqlClick(object sender, EventArgs e)
+        {
+            int cnt = 0;
+            string sql = SqlClipboardText(_lastAnswer, out cnt);
+            if (sql.Length > 0)
+            {
+                try
+                {
+                    Clipboard.SetText(sql);
+                    _status.Text = "已复制 " + cnt + " 段 SQL 到剪贴板（" + sql.Length + " 字符），到 Navicat 里新建查询粘贴即可。";
+                }
+                catch (Exception ex) { _status.Text = "复制失败：" + ex.Message; }
+                return;
+            }
+            if (_lastAnswer.Length > 0)
+            {
+                try
+                {
+                    Clipboard.SetText(_lastAnswer);
+                    _status.Text = "这条回答里没有单独标出的 SQL，已把整段回答复制走了。";
+                }
+                catch (Exception ex) { _status.Text = "复制失败：" + ex.Message; }
+                return;
+            }
+            _status.Text = "还没有回答可以复制。";
+        }
+
+        // 把回答里的 ```sql 代码块拼成能直接粘进 Navicat 的文本（供界面与自检共用）
+        internal static string SqlClipboardText(string answer, out int count)
+        {
+            count = 0;
+            if (answer == null) return "";
+            List<KeyValuePair<bool, string>> segs = SplitFences(answer);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < segs.Count; i++)
+            {
+                if (!segs[i].Key) continue;
+                string s = segs[i].Value.Trim();
+                if (s.Length == 0) continue;
+                if (count > 0) sb.Append("\r\n\r\n");
+                sb.Append(s);
+                count++;
+            }
+            string t = sb.ToString();
+            if (t.Length > 0 && !t.TrimEnd().EndsWith(";")) t = t.TrimEnd() + ";";
+            return t;
+        }
+        private void OnCopyAnswerClick(object sender, EventArgs e)
+        {
+            if (_lastAnswer.Length == 0) { _status.Text = "还没有回答可以复制。"; return; }
+            try
+            {
+                Clipboard.SetText(_lastAnswer);
+                _status.Text = "已复制上一条回答（" + _lastAnswer.Length + " 字符）。";
+            }
+            catch (Exception ex) { _status.Text = "复制失败：" + ex.Message; }
+        }
+
+        private void OnClearClick(object sender, EventArgs e)
+        {
+            if (_view.TextLength == 0) return;
+            if (MessageBox.Show(this, "清空这个窗口里的对话？（不影响主窗口的日志，也不影响用量统计）", "确认",
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            _view.Clear();
+            _history.Clear();
+            _lastSql.Clear();
+            _lastAnswer = "";
+            _status.Text = "已清空对话。";
+        }
+
+        // ---------- 显示相关 ----------
+
+        private void Append(string text, Color color, bool bold)
+        {
+            int at = _view.TextLength;
+            _view.SelectionStart = at;
+            _view.SelectionLength = 0;
+            _view.SelectionColor = color;
+            _view.SelectionBackColor = Color.White;
+            _view.SelectionFont = bold ? _fBold : _fNorm;
+            _view.AppendText(text);
+            _view.SelectionStart = _view.TextLength;
+            _view.SelectionLength = 0;
+            _view.SelectionColor = AiColor;
+            _view.ScrollToCaret();
+        }
+
+        private void AppendBlock(string text, Color color, Color back)
+        {
+            int at = _view.TextLength;
+            _view.SelectionStart = at;
+            _view.SelectionLength = 0;
+            _view.SelectionColor = color;
+            _view.SelectionBackColor = back;
+            _view.SelectionFont = _fMono;
+            _view.AppendText(text);
+            _view.SelectionBackColor = Color.White;
+            _view.SelectionStart = _view.TextLength;
+            _view.SelectionLength = 0;
+            _view.SelectionColor = AiColor;
+            _view.SelectionFont = _fNorm;
+            _view.ScrollToCaret();
+        }
+
+        private void AppendLineBreak()
+        {
+            Append("\r\n", AiColor, false);
+        }
+
+        private void AppendNote(string note)
+        {
+            Append("    （" + note + "）\r\n", NoteColor, false);
+        }
+
+        private static string OneLine(string s)
+        {
+            return s.Replace("\r\n", " ").Replace("\n", " ").Trim();
+        }
+
+        private static string Indent(string s, string pad)
+        {
+            string[] ls = s.Replace("\r\n", "\n").Split('\n');
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ls.Length; i++)
+            {
+                if (i > 0) sb.Append("\r\n");
+                sb.Append(pad);
+                sb.Append(ls[i]);
+            }
+            return sb.ToString();
+        }
+
+        // 按 ``` 围栏把回答切成“普通文字 / SQL 段”
+        internal static List<KeyValuePair<bool, string>> SplitFences(string text)
+        {
+            List<KeyValuePair<bool, string>> list = new List<KeyValuePair<bool, string>>();
+            string[] lines = (text == null ? "" : text).Replace("\r\n", "\n").Split('\n');
+            StringBuilder cur = new StringBuilder();
+            bool inSql = false;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].TrimStart().StartsWith("```"))
+                {
+                    if (cur.Length > 0)
+                    {
+                        list.Add(new KeyValuePair<bool, string>(inSql, cur.ToString().TrimEnd('\n')));
+                        cur.Length = 0;
+                    }
+                    inSql = !inSql;
+                    continue;
+                }
+                cur.Append(lines[i]);
+                cur.Append('\n');
+            }
+            if (cur.Length > 0) list.Add(new KeyValuePair<bool, string>(inSql, cur.ToString().TrimEnd('\n')));
+            return list;
+        }
+
+        private static string Money(AiConfig cfg, AiCallResult r)
+        {
+            return Money2(cfg.PriceIn / 1000000.0 * r.PromptTokens + cfg.PriceOut / 1000000.0 * r.CompletionTokens);
+        }
+
+        private static string Money(AiUsage u, AiConfig cfg)
+        {
+            return Money2(u.Cost(cfg.PriceIn, cfg.PriceOut));
+        }
+
+        private static string Money2(double v)
+        {
+            if (v <= 0) return "0";
+            if (v < 0.000001) return v.ToString("0.00000000", System.Globalization.CultureInfo.InvariantCulture);
+            return v.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_fNorm != null) { _fNorm.Dispose(); _fNorm = null; }
+                if (_fBold != null) { _fBold.Dispose(); _fBold = null; }
+                if (_fMono != null) { _fMono.Dispose(); _fMono = null; }
+            }
+            base.Dispose(disposing);
+        }
+    }
     internal class AiSettingsForm : Form
     {
         public AiConfig Config;
@@ -2045,8 +2805,21 @@ namespace NavicatZhHelper
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "--chattest")
+            {
+                RunChatSelfTest(cfgPath, dir, Path.Combine(dir, "问答自检.txt"));
+                return;
+            }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            if (args.Length > 0 && args[0] == "--chatdemo")
+            {
+                AiConfig decfg = AiConfig.Load(cfgPath);
+                ChatForm dcf = new ChatForm(delegate() { return decfg; }, new AiUsage(), new AiUsage(), dir, null);
+                dcf.RenderDemo();
+                Application.Run(dcf);
+                return;
+            }
             Application.Run(new MainForm(dictPath, cfgPath, dir, demo));
         }
 
@@ -2132,6 +2905,46 @@ namespace NavicatZhHelper
         }
 
         // AI 自检：拿两条真实报错走一遍 AI 分析，结果写入文件（含 token 用量与费用）
+        // 自检：走「AI问答」窗口完全相同的代码路径（ChatPrompt + Chat + SQL 分段），结果写入文件便于核对
+        private static void RunChatSelfTest(string cfgPath, string dir, string outPath)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Navicat 中文助手 · AI 问答自检");
+            sb.AppendLine("时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            AiConfig cfg = AiConfig.Load(cfgPath);
+            sb.AppendLine("启用：" + cfg.Enabled + "   地址：" + cfg.BaseUrl);
+            sb.AppendLine("模型：" + cfg.Model + "   密钥长度：" + cfg.ApiKey.Trim().Length);
+            string q = "MySQL 里 deterministic 和 not deterministic 分别是什么意思？建函数时为什么要指定？不指定会怎样？顺便给我一条查看当前数据库所有函数的 SQL，要能直接执行。";
+            sb.AppendLine("问：" + q);
+            List<object> msgs = new List<object>();
+            msgs.Add(AiClient.Msg("system", AiClient.ChatPrompt));
+            msgs.Add(AiClient.Msg("user", q));
+            AiCallResult r = AiClient.Chat(cfg, msgs);
+            sb.AppendLine("是否成功：" + r.Ok);
+            if (!r.Ok) sb.AppendLine("错误：" + r.Error);
+            double cost = cfg.PriceIn / 1000000.0 * r.PromptTokens + cfg.PriceOut / 1000000.0 * r.CompletionTokens;
+            sb.AppendLine("用量：输入 " + r.PromptTokens + " tokens，输出 " + r.CompletionTokens + " tokens，约 " + cost.ToString("0.000000") + " 元");
+            string ans = (r.Result == null ? "" : r.Result.Why);
+            sb.AppendLine("回答字符数：" + ans.Length);
+            sb.AppendLine("---- 回答全文 ----");
+            sb.AppendLine(ans);
+            int cnt = 0;
+            string sql = ChatForm.SqlClipboardText(ans, out cnt);
+            sb.AppendLine("---- 复制SQL 会拿到的内容（" + cnt + " 段）----");
+            sb.AppendLine(sql.Length == 0 ? "(这条回答里没有 ```sql 代码块)" : sql);
+            sb.AppendLine("---- 分段检查 ----");
+            List<KeyValuePair<bool, string>> segs = ChatForm.SplitFences(ans);
+            for (int i = 0; i < segs.Count; i++)
+            {
+                string v = segs[i].Value.Replace("\r", " ").Replace("\n", " / ");
+                if (v.Length > 60) v = v.Substring(0, 60) + " ...";
+                sb.AppendLine("段" + (i + 1) + (segs[i].Key ? " [SQL]" : " [文字]") + " " + v);
+            }
+            sb.AppendLine("---- 结论 ----");
+            if (sql.Length > 0) sb.AppendLine("通过：能给出可复制的 SQL（" + sql.Length + " 字符，末尾分号=" + sql.TrimEnd().EndsWith(";") + "）");
+            else sb.AppendLine("注意：这条回答里没有 SQL 代码块，复制SQL 会退回复制整段回答。");
+            File.WriteAllText(outPath, sb.ToString(), new UTF8Encoding(true));
+        }
         private static void RunAiSelfTest(string cfgPath, string dir, string outPath)
         {
             AiConfig cfg = AiConfig.Load(cfgPath);
